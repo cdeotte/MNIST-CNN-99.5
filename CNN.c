@@ -209,7 +209,7 @@ char init[200][80]={
     "n n=channel, t=i, i=27, d=0",
     "n n=z, t=i, i=28, d=1",
     "n n=removeHeader, t=i, i=29, d=1",
-    "n n=dataFile, t=f, i=11, d=KaggleTrain42k.csv",
+    "n n=dataFile, t=f, i=11, d=train.csv",
     "n n=decay, t=r, i=7, d=0.95",
     "n n=divideBy, t=r, i=8, d=255.0",
     "n n=subtractBy, t=r, i=9, d=0.0",
