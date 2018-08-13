@@ -471,7 +471,7 @@ pthread_t workerThread;
 pthread_attr_t 	stackSizeAttribute;
 int pass[5] = {0};
 int working = 0;
-int requiredStackSize = 1024*1024;
+int requiredStackSize = 8*1024*1024;
 // CONFUSION MATRIX DATA
 int maxCD = 54;
 int cDigits[10][10][54];
