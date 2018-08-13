@@ -159,16 +159,14 @@ char init[200][80]={
     "c c=DotRemoveMode, k=r",
     "c c=DotLowResMode, k=u",
 // Special features and/or debugging
-/**
-    "c c=Dream, k=e",
-    "c c=Save, k=v",
-    "c c=WriteWeights, k=z",
-    "c c=DisplayWeights, k=y",
-    "c c=InitData, k=n",
-    "c c=BoundingBoxes, k=j",
-*/
+//    "c c=Dream, k=e",
+//    "c c=Save, k=v",
+//    "c c=WriteWeights, k=z",
+//    "c c=DisplayWeights, k=y",
+//    "c c=InitData, k=n",
+//    "c c=BoundingBoxes, k=j",
     "n n=x, t=i, i=1, d=0",
-    "n n=epochs, t=i, i=2, d=1000000",
+    "n n=epochs, t=i, i=2, d=100000",
     "n n=learn, t=r, i=1, d=0.01",
     "n n=color, t=i, i=3, d=0",
     "n n=displayFreq, t=i, i=4, d=1",
@@ -405,6 +403,8 @@ int trainSizeI = 0, extraTrainSizeI = 1000;
 int trainColumns = 0, trainSizeE = 0;
 int *trainSet = 0; int trainSetSize = 0;
 int *validSet = 0; int validSetSize = 0;
+float *ents = 0, *ents2 = 0;
+float *accs = 0, *accs2 = 0;
 // TEST DATA
 float (*testImages)[784] = 0;
 float (*testImages2)[196] = 0;
@@ -450,7 +450,7 @@ int numLayers = 0;
 char nets[6][10][20] =
           {{"","","","","","","","","",""},
            {"","","","","","","2","20","20","6"},
-           {"","","784","C5:6:1","P2","C5:16","P2","120","84","10"},
+           {"","","","784","C5:6","P2","C5:16","P2","128","10"},
            {"","","","784","C5:12","P2","C5:24","P2","128","10"},
            {"","","","","","","","196","100","10"},
            {"","","","","","784","C5:6","P2","50","10"}};
@@ -471,7 +471,7 @@ pthread_t workerThread;
 pthread_attr_t 	stackSizeAttribute;
 int pass[5] = {0};
 int working = 0;
-int requiredStackSize = 8*1024*1024;
+int requiredStackSize = 1024*1024;
 // CONFUSION MATRIX DATA
 int maxCD = 54;
 int cDigits[10][10][54];
@@ -1794,14 +1794,19 @@ void *runBackProp(void *arg){
         working=0; websetmode(2);
         return NULL;
     }
-    float ents[(int)(x/y+1)];
-    float ents2[(int)(x/y+1)];
-    float accs[(int)(x/y+1)];
-    float accs2[(int)(x/y+1)];
+    // ALLOCATE MEMORY FOR ENTORPY AND ACCURACY HISTORY
+    if (ents!=NULL){
+        free(ents); free(ents2); free(accs); free(accs2);
+    }
+    ents = (float*)malloc( (int)(x/y+1) * sizeof(float) );
+    ents2 = (float*)malloc( (int)(x/y+1) * sizeof(float) );
+    accs = (float*)malloc( (int)(x/y+1) * sizeof(float) );
+    accs2 = (float*)malloc( (int)(x/y+1) * sizeof(float) );
     int entSize = 0, accSize = 0, ent2Size = 0, acc2Size = 0;
     int j,j2,k,s,s2,b;
     float entropy,entropy2,ent;
     time(&start);
+    // PERFORM X TRAINING EPOCHS
     for (j=0;j<x;j++){
         s = 0; entropy = 0.0;
         if (isDigits(inited)!=1) trainSize = trainSizeD;
@@ -2043,6 +2048,7 @@ int backProp(int x, float *ent, int ep){
     int i = 0, j, k, r = 0, d=0, rot=0, hres=0, lres=1;
     float der=1.0, xs=0.0, ys=0.0, extra=0.0, sc=1.0;
     int dc, a, a2, i2, j2, i3, j3, pmax, imax, jmax;
+    int temp, temp2;
     // DATA AUGMENTATION
     if (augmentRatio>0.0)
     if ( (float)rand()/(float)RAND_MAX <= augmentRatio ){
@@ -2082,9 +2088,11 @@ int backProp(int x, float *ent, int ep){
         errors[k][i] = 0.0;
         if (dropOutRatio==0.0 || DOdense==0 || dropOut[k][i]==1){ // dropout
             if (activation==2) der = (layers[k][i]+1)*(1-layers[k][i]); //TanH derivative
-            if (activation==2 || layers[k][i]>0) //this is ReLU derivative
-            for (j=0;j<layerSizes[k+1];j++)
-                errors[k][i] += errors[k+1][j]*weights[k+1][j*(layerSizes[k]*layerChan[k]+1)+i]*der;
+            if (activation==2 || layers[k][i]>0){ //this is ReLU derivative
+                temp = layerSizes[k]*layerChan[k]+1;
+                for (j=0;j<layerSizes[k+1];j++)
+                    errors[k][i] += errors[k+1][j]*weights[k+1][j*temp+i]*der;
+            }
         }
     }
     else if (layerType[k+1]==1){ // FEEDS INTO CONVOLUTION
@@ -2096,14 +2104,16 @@ int backProp(int x, float *ent, int ep){
             for (a2=0;a2<layerChan[k];a2++)
             for (i2=0;i2<layerConv[k+1];i2++)
             for (j2=0;j2<layerConv[k+1];j2++){
+                temp = a*(layerConvStep[k+1]+1);
+                temp2 = a*layerSizes[k+1] + i*layerWidth[k+1] + j;
                 i3 = i + i2 - dc;
                 j3 = j + j2 - dc;
                 if (activation==2) der = (layers[k][a2*layerSizes[k] + i3*layerWidth[k] + j3]+1)*(1-layers[k][a2*layerSizes[k] + i3*layerWidth[k] + j3]); //TanH
                 if (activation==2 || layers[k][a2*layerSizes[k] + i3*layerWidth[k] + j3]>0) // this is ReLU derivative
                 if (i3>=0 && i3<layerWidth[k] && j3>=0 && j3<layerWidth[k]) // padding
                 errors[k][a2*layerSizes[k] + i3*layerWidth[k] + j3] +=
-                    weights[k+1][a*(layerConvStep[k+1]+1) + a2*layerConvStep2[k+1] + i2*layerConv[k+1] +j2]
-                    * errors[k+1][a*layerSizes[k+1] + i*layerWidth[k+1] + j] * der;
+                    weights[k+1][temp + a2*layerConvStep2[k+1] + i2*layerConv[k+1] +j2]
+                    * errors[k+1][temp2] * der;
             }
         }
         if (dropOutRatio>0.0 && DOconv==1) // dropout
@@ -2134,9 +2144,11 @@ int backProp(int x, float *ent, int ep){
     int count = 0;
     for (k=11-numLayers;k<10;k++){
     if (layerType[k]==0){ // FULLY CONNECTED LAYER
-        for (i=0;i<layerSizes[k];i++)
+        for (i=0;i<layerSizes[k];i++){
+            temp = i*(layerSizes[k-1]*layerChan[k-1]+1);
             for (j=0;j<layerSizes[k-1]*layerChan[k-1]+1;j++)
-                weights[k][i*(layerSizes[k-1]*layerChan[k-1]+1)+j] += errors[k][i]*layers[k-1][j];
+                weights[k][temp+j] += errors[k][i]*layers[k-1][j];
+        }
     }
     else if (layerType[k]==1){ // CONVOLUTION LAYER
         dc = 0; if (layerPad[k]==1) dc = layerConv[k]/2;
@@ -2146,11 +2158,13 @@ int backProp(int x, float *ent, int ep){
             for (a2=0;a2<layerChan[k-1];a2++)
             for (i2=0;i2<layerConv[k];i2++)
             for (j2=0;j2<layerConv[k];j2++){
+                temp = a*(layerConvStep[k]+1);
+                temp2 = a*layerSizes[k] + i*layerWidth[k] + j;
                 i3 = i + i2 - dc;
                 j3 = j + j2 - dc;
                 if (i3>=0 && i3<layerWidth[k-1] && j3>=0 && j3<layerWidth[k-1])
-                weights[k][a*(layerConvStep[k]+1) + a2*layerConvStep2[k] + i2*layerConv[k] + j2] +=
-                    errors[k][a*layerSizes[k] + i*layerWidth[k] + j] * layers[k-1][a2*layerSizes[k-1] + i3*layerWidth[k-1] + j3];
+                weights[k][temp + a2*layerConvStep2[k] + i2*layerConv[k] + j2] +=
+                    errors[k][temp2] * layers[k-1][a2*layerSizes[k-1] + i3*layerWidth[k-1] + j3];
             }
             weights[k][(a+1)*(layerConvStep[k]+1)-1] += errors[k][a*layerSizes[k] + i*layerWidth[k] + j];
         }
@@ -2169,6 +2183,7 @@ int forwardProp(int x, int dp, int train){
     int i,j,k,imax,dc;
     int a, a2, i2, j2, i3, j3;
     float sum, esum, max, rnd, pmax;
+    int temp, temp2;
     // INPUT LAYER
     if (isDigits(inited)==1 && layerSizes[10-numLayers]==196){
         if (train==1) for (i=0;i<196;i++) layers[10-numLayers][i] = trainImages2[x][i];
@@ -2201,9 +2216,10 @@ int forwardProp(int x, int dp, int train){
     if (layerType[k]==0) // FULLY CONNECTED LAYER
     for (i=0;i<layerSizes[k];i++){
         if (dropOutRatio==0.0 || dp==0 || DOdense==0 || dropOut[k][i]==1){
+            temp = i*(layerSizes[k-1]*layerChan[k-1]+1);
             sum = 0.0;
             for (j=0;j<layerSizes[k-1]*layerChan[k-1]+1;j++)
-                sum += layers[k-1][j]*weights[k][i*(layerSizes[k-1]*layerChan[k-1]+1)+j];
+                sum += layers[k-1][j]*weights[k][temp+j];
             if (activation==1) layers[k][i] = ReLU(sum);
             else layers[k][i] = TanH(sum);
             //if (dropOutRatio>0.0 && dp==1) layers[k][i] = layers[k][i]  / (1-dropOutRatio);
@@ -2216,6 +2232,7 @@ int forwardProp(int x, int dp, int train){
         for (a=0;a<layerChan[k];a++)
         for (i=0;i<layerWidth[k];i++)
         for (j=0;j<layerWidth[k];j++){
+            temp = a*(layerConvStep[k]+1);
             sum = 0.0;
             for (a2=0;a2<layerChan[k-1];a2++)
             for (i2=0;i2<layerConv[k];i2++)
@@ -2223,8 +2240,8 @@ int forwardProp(int x, int dp, int train){
                 i3 = i + i2 - dc;
                 j3 = j + j2 - dc;
                 if (i3>=0 && i3<layerWidth[k-1] && j3>=0 && j3<layerWidth[k-1])
-                sum += layers[k-1][a2*layerSizes[k-1] + i3*layerWidth[k-1] + j3] * weights[k][a*(layerConvStep[k]+1) + a2*layerConvStep2[k] + i2*layerConv[k] + j2];
-                else sum -= imgBias * weights[k][a*(layerConvStep[k]+1) + a2*layerConvStep2[k] + i2*layerConv[k] + j2];
+                sum += layers[k-1][a2*layerSizes[k-1] + i3*layerWidth[k-1] + j3] * weights[k][temp + a2*layerConvStep2[k] + i2*layerConv[k] + j2];
+                else sum -= imgBias * weights[k][temp + a2*layerConvStep2[k] + i2*layerConv[k] + j2];
             }
             sum += weights[k][(a+1)*(layerConvStep[k]+1)-1];
             if (activation==1) layers[k][a*layerSizes[k] + i*layerWidth[k] + j] = ReLU(sum);
@@ -2776,8 +2793,9 @@ void dreamProp(int y, int it, float bs, int ds){
     // NEEDS TO BE UPDATED FOR CONV AND POOL LAYERS
     char buffer[80];
     int i = 0, j, k, n, r = 0, d=0, c;
+    int dc, a, a2, i2, j2, i3, j3, pmax, imax, jmax;
     int in = 10-numLayers, row, col, ct=0;
-    float der, min, max;
+    float der = 1.0, min, max;
     float (*tImage)[layerSizes[in]];
     if (layerSizes[in]==784) tImage = trainImages;
     else tImage = trainImages2;
@@ -2789,26 +2807,77 @@ void dreamProp(int y, int it, float bs, int ds){
             errors[9][i] = an * (0 - layers[9][i]);
             if (i==y) errors[9][i] = an * (1  - layers[9][i]);
         }
-        // LAYERS - CALCULATE ERRORS
-        for (k=8;k>9-numLayers;k--)
-        for (i=0;i<layerSizes[k];i++){
-            errors[k][i] = 0; der = 1.0;
-            if (activation==2 && k!=in) der = (layers[k][i]+1)*(1-layers[k][i]); //TanH derivative
-            if (activation==2 || layers[k][i]>0 || k==in) //this is ReLU derivative
-            for (j=0;j<layerSizes[k+1];j++)
-                errors[k][i] += errors[k+1][j]*weights[k+1][j*(layerSizes[k]+1)+i]*der;
+        
+        int temp, temp2;
+        // HIDDEN LAYERS - CALCULATE ERRORS
+        for (k=8;k>9-numLayers;k--){
+            if (layerType[k+1]==0) // FEEDS INTO FULLY CONNECTED
+            for (i=0;i<layerSizes[k]*layerChan[k];i++){
+                errors[k][i] = 0.0;
+                if (activation==2) der = (layers[k][i]+1)*(1-layers[k][i]); //TanH derivative
+                if (activation==2 || layers[k][i]>0){ //this is ReLU derivative
+                    temp = layerSizes[k]*layerChan[k]+1;
+                    for (j=0;j<layerSizes[k+1];j++)
+                        errors[k][i] += errors[k+1][j]*weights[k+1][j*temp+i]*der;
+                }
+            }
+            else if (layerType[k+1]==1){ // FEEDS INTO CONVOLUTION
+                for (i=0;i<layerSizes[k]*layerChan[k];i++) errors[k][i] = 0.0;
+                dc = 0; if (layerPad[k+1]==1) dc = layerConv[k+1]/2;
+                for (a=0;a<layerChan[k+1];a++)
+                for (i=0;i<layerWidth[k+1];i++)
+                for (j=0;j<layerWidth[k+1];j++){
+                    temp = a*layerSizes[k+1] + i*layerWidth[k+1] + j;
+                    temp2 = a*(layerConvStep[k+1]+1);
+                    for (a2=0;a2<layerChan[k];a2++)
+                    for (i2=0;i2<layerConv[k+1];i2++)
+                    for (j2=0;j2<layerConv[k+1];j2++){
+                        i3 = i + i2 - dc;
+                        j3 = j + j2 - dc;
+                        if (activation==2) der = (layers[k][a2*layerSizes[k] + i3*layerWidth[k] + j3]+1)*(1-layers[k][a2*layerSizes[k] + i3*layerWidth[k] + j3]); //TanH
+                        if (activation==2 || layers[k][a2*layerSizes[k] + i3*layerWidth[k] + j3]>0) // this is ReLU derivative
+                        if (i3>=0 && i3<layerWidth[k] && j3>=0 && j3<layerWidth[k]) // padding
+                        errors[k][a2*layerSizes[k] + i3*layerWidth[k] + j3] +=
+                            weights[k+1][temp2 + a2*layerConvStep2[k+1] + i2*layerConv[k+1] +j2]
+                            * errors[k+1][temp];
+                    }
+                }
+            }
+            else if (layerType[k+1]==2){ // FEEDS INTO MAX POOLING
+                for (i=0;i<layerSizes[k]*layerChan[k];i++) errors[k][i] = 0.0;
+                for (a=0;a<layerChan[k];a++)
+                for (i=0;i<layerWidth[k+1];i++)
+                for (j=0;j<layerWidth[k+1];j++){
+                    pmax = -1e6;
+                    for (i2=0;i2<layerConv[k+1];i2++)
+                    for (j2=0;j2<layerConv[k+1];j2++)
+                        if (layers[k][a*layerSizes[k] + (i*layerConv[k+1]+i2)*layerWidth[k] + j*layerConv[k+1]+j2]>pmax){
+                            pmax = layers[k][a*layerSizes[k] + (i*layerConv[k+1]+i2)*layerWidth[k] + j*layerConv[k+1]+j2];
+                            imax = i2;
+                            jmax = j2;
+                        }
+                    errors[k][a*layerSizes[k] + (i*layerConv[k+1]+imax)*layerWidth[k] + j*layerConv[k+1]+jmax] =
+                        errors[k+1][a*layerSizes[k+1] + i*layerWidth[k+1] + j];
+                }
+            }
         }
-        //min=1e6, max=-1e6;
-        for (i=0;i<layerSizes[in];i++){
+        //for (i=0;i<layerSizes[in];i++) printf("%f ",errors[in][i]);
+        //printf("\n");
+        float nei;
+        int ct;
+        for (i=0;i<layerSizes[in];i++)
             tImage[trainSizeE+n+1][i] = tImage[trainSizeE+n][i];
-            tImage[trainSizeE+n+1][i] += errors[in][i] + bs;
+        for (i=0;i<layerSizes[in];i++){
+            nei = 0.0; ct = 0;
+            if (i-1>=0) {nei += tImage[trainSizeE+n+1][i-1]; ct++;}
+            if (i+1<28) {nei += tImage[trainSizeE+n+1][i+1]; ct++;}
+            if (i-28>=0) {nei += tImage[trainSizeE+n+1][i-28]; ct++;}
+            if (i+28<784) {nei += tImage[trainSizeE+n+1][i+28]; ct++;}
+            nei = (nei/ct - tImage[trainSizeE+n+1][i])/bs;
+            tImage[trainSizeE+n+1][i] += errors[in][i] + nei;
             if (tImage[trainSizeE+n+1][i]<0.0) tImage[trainSizeE+n+1][i]=0.0;
-            if (tImage[trainSizeE+n+1][i]>1.0) tImage[trainSizeE+n+1][i]=1.0;            
-            //if (tImage[trainSizeE][i]>max) max = tImage[trainSizeE][i];
-            //if (tImage[trainSizeE][i]<min) min = tImage[trainSizeE][i];
+            if (tImage[trainSizeE+n+1][i]>1.0) tImage[trainSizeE+n+1][i]=1.0;
         }
-        //for (i=0;i<layerSizes[in];i++)
-        //    tImage[trainSizeE][i] = (tImage[trainSizeE][i] - min)/(max - min);
     }
     c = forwardProp(trainSizeE+it,0,1);
     trainDigits[trainSizeE+it] = c;
