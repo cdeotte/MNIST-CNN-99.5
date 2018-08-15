@@ -2101,11 +2101,11 @@ int backProp(int x, float *ent, int ep){
         for (a=0;a<layerChan[k+1];a++)
         for (i=0;i<layerWidth[k+1];i++)
         for (j=0;j<layerWidth[k+1];j++){
+            temp = a*(layerConvStep[k+1]+1);
+            temp2 = a*layerSizes[k+1] + i*layerWidth[k+1] + j;
             for (a2=0;a2<layerChan[k];a2++)
             for (i2=0;i2<layerConv[k+1];i2++)
             for (j2=0;j2<layerConv[k+1];j2++){
-                temp = a*(layerConvStep[k+1]+1);
-                temp2 = a*layerSizes[k+1] + i*layerWidth[k+1] + j;
                 i3 = i + i2 - dc;
                 j3 = j + j2 - dc;
                 if (activation==2) der = (layers[k][a2*layerSizes[k] + i3*layerWidth[k] + j3]+1)*(1-layers[k][a2*layerSizes[k] + i3*layerWidth[k] + j3]); //TanH
@@ -2155,11 +2155,11 @@ int backProp(int x, float *ent, int ep){
         for (a=0;a<layerChan[k];a++)
         for (i=0;i<layerWidth[k];i++)
         for (j=0;j<layerWidth[k];j++){
+            temp = a*(layerConvStep[k]+1);
+            temp2 = a*layerSizes[k] + i*layerWidth[k] + j;
             for (a2=0;a2<layerChan[k-1];a2++)
             for (i2=0;i2<layerConv[k];i2++)
             for (j2=0;j2<layerConv[k];j2++){
-                temp = a*(layerConvStep[k]+1);
-                temp2 = a*layerSizes[k] + i*layerWidth[k] + j;
                 i3 = i + i2 - dc;
                 j3 = j + j2 - dc;
                 if (i3>=0 && i3<layerWidth[k-1] && j3>=0 && j3<layerWidth[k-1])
