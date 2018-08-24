@@ -140,8 +140,8 @@ float square(float x);
 // MENU CREATION ARRAY
 // explained in webgui.c user manual
 //
-int lines = 200;
-char init[200][80]={
+int lines = 199;
+char init[199][80]={
     "c c=Load, k=l",
     "c c=Display, k=p",
     "c c=Init-Net, k=i",
@@ -324,9 +324,7 @@ char init[200][80]={
     "s n=net, v=1, l=2-20-20-6",
     "s n=net, v=2, l=LeNet-5",
     "s n=net, v=3, l=784-C5:12-P2-C5:24-P2-128-10",
-    "s n=net, v=4, l=196-100-10",
-    "s n=net, v=5, l=784-C5:6-P2-50-10",
-    //"s n=net, v=6, l=16-C3:2-P2-2-2",
+    "s n=net, v=4, l=784-1000-1000-10",
 // NAMES ABOVE
     "s n=type, v=1, l=ReLU",
     "s n=type, v=2, l=TanH",
@@ -452,7 +450,7 @@ char nets[6][10][20] =
            {"","","","","","","2","20","20","6"},
            {"","","","784","C5:6","P2","C5:16","P2","128","10"},
            {"","","","784","C5:12","P2","C5:24","P2","128","10"},
-           {"","","","","","","","196","100","10"},
+           {"","","","","","","784","1000","1000","10"},
            {"","","","","","784","C5:6","P2","50","10"}};
            //{"","","","","","16","C3:2","P2","2","2"}};
 // RAINBOW COLORS
@@ -2954,6 +2952,7 @@ void initParameterMap(char* str, int n){
 char* extractVal(char* str, char key){
     /* returns the value associated with key in str */
     buffer[0]=0;
+    str[79]=0;
     int index1 = 0, index2;
     while (index1<strlen(str)){
         if (str[index1]=='='){
