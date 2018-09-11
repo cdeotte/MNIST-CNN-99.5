@@ -115,6 +115,8 @@ void line(int* img, int m, int n,float x1, float y1, float x2, float y2,int d,in
 void clearImage(int p);
 void updateImage();
 void displayClassify(int dd);
+void displayClassify3D();
+void setColors4();
 void placeDots();
 void removeDot(float x, float y);
 // INIT-NET
@@ -154,8 +156,8 @@ float square(float x);
 // MENU CREATION ARRAY
 // (explained in webgui.c user manual)
 //
-const int lines = 217;
-char init[217][80]={
+const int lines = 218;
+char init[218][80]={
     "c c=Load, k=l",
     "c c=Display, k=p",
     "c c=Init-Net, k=i",
@@ -172,6 +174,7 @@ char init[217][80]={
     "c c=ClearPane3, k=c",
     "c c=DotRemoveMode, k=r",
     "c c=DotLowResMode, k=u",
+    "c c=Dot3dMode, k=h",
 // Special features and/or debugging
 //    "c c=Dream, k=e",
 //    "c c=Heatmap, k=f",
@@ -458,7 +461,8 @@ float augmentScale = 0, imgBias=0.0;
 int augmentAngle = 0;
 float augmentDx = 0.0, augmentDy = 0.0;
 // NETWORK ACTIVATIONS AND ERRORS
-float prob = 0.0;
+float prob = 0.0, prob0 = 0.0;
+float prob1 = 0.0, prob2 = 0.0;
 float* layers[10] = {0};
 int* dropOut[10] = {0};
 float*  weights[10] = {0};
@@ -520,6 +524,14 @@ int trainSizeD = 0;
 int useSmall = -1;
 int removeMode = -1;
 int dotsMode = 4; //6=fluid display 2=slower
+// DOT 3D DISPLAY
+int use3D = -1;
+float heights3D[121][81] = {{0}};
+float pa3D[121][81] = {{0}};
+float pb3D[121][81] = {{0}};
+float pc3D[121][81] = {{0}};
+double *red4=0, *green4=0, *blue4=0;
+int requestInit = 0;
 // MISC
 const char *weightsFile1 = "weights1.txt";
 const char *weightsFile2 = "weights2.txt";
@@ -657,7 +669,8 @@ int main(int argc, char *argv[]){
         else if (cmd=='i'){ // INIT-NET
             int t = ipGet("net");
             weightScale = rpGet("scaleWeights");
-            initNet(t);
+            if (working==1) requestInit = 1;
+            else initNet(t);
             sprintf(buffer,"Initialized NN=%d with Xavier init scaled=%.3f",t,weightScale);
             webwriteline(buffer);
             int len = sprintf(buffer,"Architecture (%s",layerNames[0]);
@@ -765,6 +778,10 @@ int main(int argc, char *argv[]){
             trainSizeD = 0;
             updateImage();
             webwriteline("Pane 3 cleared. Dots cleared");
+            if (red4 != NULL){
+                free(red4); free(green4); free(blue4);
+                red4 = NULL;
+            }
         }
         else if (cmd=='r'){ // DOT REMOVE MODE
             if (removeMode==-1) removeMode = 1;
@@ -779,6 +796,21 @@ int main(int argc, char *argv[]){
             webbutton(useSmall,"DotLowResMode");
             sprintf(buffer,"UseSmall = %d",useSmall);
             webwriteline(buffer);
+            if (isDigits(inited)!=1 && layerSizes[10-numLayers]==2 && working==0 && trainSizeD!=0){
+                if (use3D==1) displayClassify3D();
+                else displayClassify(0);
+            }
+        }
+        else if (cmd=='h'){ // DOT 3D MODE
+            if (use3D==-1) use3D = 1;
+            else use3D = -1;
+            webbutton(use3D,"Dot3dMode");
+            sprintf(buffer,"Use3D = %d",use3D);
+            webwriteline(buffer);
+            if (isDigits(inited)!=1 && layerSizes[10-numLayers]==2 && working==0 && trainSizeD!=0){
+                if (use3D==1) displayClassify3D();
+                else displayClassify(0);
+            }
         }
         
         // SPECIAL FEATURES, UNCOMMENT IN MENU TO TURN ON
@@ -937,6 +969,7 @@ int loadTrain(int ct, double testProp, int sh, float imgScale, float imgBias){
         free(trainDigits);
         free(trainSet);
         free(validSet);
+        trainImages = NULL;
     }
     trainImages = malloc(784 * (lines+extraTrainSizeI) * sizeof(float));
     trainImages2 = malloc(196 * (lines+extraTrainSizeI) * sizeof(float));
@@ -1044,6 +1077,7 @@ int loadTest(int ct, int sh, int rc, float imgScale, float imgBias){
         free(testImages);
         free(testImages2);
         free(testDigits);
+        testImages = NULL;
     }
     testImages = malloc(784 * lines * sizeof(float));
     testImages2 = malloc(196 * lines * sizeof(float));
@@ -1709,6 +1743,25 @@ void setColors3(){
 /**********************************************************************/
 /*      ADVANCED DISPLAY                                              */
 /**********************************************************************/
+void setColors4(){
+    if (red4 == NULL){
+        red4 = (double*)malloc(262164 * sizeof(double));
+        green4 = (double*)malloc(262164 * sizeof(double));
+        blue4 = (double*)malloc(262164 * sizeof(double));
+    }
+    int i, j, k;
+    for (i=0;i<64;i++)
+    for (j=0;j<64;j++)
+    for (k=0;k<64;k++){
+        red4[i*4096+j*64+k] = i/63.0;
+        green4[i*4096+j*64+k] = j/63.0;
+        blue4[i*4096+j*64+k] = k/63.0;
+    }
+}
+
+/**********************************************************************/
+/*      ADVANCED DISPLAY                                              */
+/**********************************************************************/
 void maxActivations(int ct, int p, int lay, int chan, int train, int x){
     // DISPLAYS CT TOP REGION PER 1 FILTER
     if (ct<0) return maxActivations3(-ct,p,lay,chan,train,x);
@@ -1969,7 +2022,7 @@ void displayEntropy(float *ents, int entSize, float *ents2, int display){
     int pwr = (int)log10f(entSize);
     int inc = (int)pow(10,pwr);
     for (i=1;i<entSize/inc+1;i++){
-        if (useSmall==-1){ 
+        if (useSmall==-1){
             line(img,h,w,0.1+1.3*(inc*i)/entSize,0.08,0.1+1.3*(inc*i)/entSize,0.12,0,7);
             printInt(370,(int)(40+520*(inc*i)/(float)entSize)-(pwr+1)*5,img,h,w,inc*i*display,0,3);
         }
@@ -2159,8 +2212,8 @@ void displayClassify(int dd){
     int dx = 10, dy = 10, i,j,x,y,c;
     websetcolors(8,red,green,blue,3);
     for (i=0;i<240000;i++) ((int*)image)[i]=6;
-    int xl = 600/dx - 1;
-    int yl = 400/dy - 1;
+    int xl = 600/dx;
+    int yl = 400/dy;
     for (x=0; x<xl; x++)
     for (y=0; y<yl; y++){
         trainDots[maxDots-1][0] = (float)dx*((float)x+0.5)/400.0;
@@ -2178,6 +2231,70 @@ void displayClassify(int dd){
             image2[i][j] = image[i*5][j*5];
         webimagedisplay(120,80,(int*)image2,3);
     }
+    showDig[0][0]=0;
+}
+
+/**********************************************************************/
+/*      DISPLAY DOTS                                                  */
+/**********************************************************************/
+void displayClassify3D(){
+    // DISPLAY CLASSIFICATION REGIONS FOR DOTS IN 3D!
+    int dx = 5, dy = 5, i,j,x,y,c;
+    if (useSmall==1){ dx=10; dy=10;}
+    float xv[3], yv[3], zv[3];
+    float p0avg, p1avg, p2avg;
+    if (red4==NULL) setColors4();
+    websetcolors(262144,red4,green4,blue4,0);
+    webframe(5);
+    int xl = 600/dx;
+    int yl = 400/dy;
+    for (x=0; x<xl+1; x++)
+    for (y=0; y<yl+1; y++){
+        trainDots[maxDots-1][0] = (float)dx*((float)x+0.5)/400.0;
+        trainDots[maxDots-1][1] = (float)dy*((float)y+0.5)/400.0;
+        c = forwardProp(maxDots-1,0,1,0);
+        heights3D[x][y] = prob0 + 0.5*prob1;
+        pa3D[x][y] = prob0;
+        pb3D[x][y] = prob1;
+        pc3D[x][y] = prob2;
+    }
+    for (x=0; x<xl; x++)
+    for (y=0; y<yl; y++){
+        xv[0] = (float)x/xl;
+        yv[0] = (float)y/yl;
+        zv[0] = heights3D[x][y]/5.0 + 0.4;
+        
+        xv[1] = (float)x/xl;
+        yv[1] = (float)(y+1)/yl;
+        zv[1] = heights3D[x][y+1]/5.0 + 0.4;
+        
+        xv[2] = (float)(x+1)/xl;
+        yv[2] = (float)y/yl;
+        zv[2] = heights3D[x+1][y]/5.0 + 0.4;
+        
+        p0avg = (pa3D[x][y]+pa3D[x][y+1]+pa3D[x+1][y])/3.0;
+        p1avg = (pb3D[x][y]+pb3D[x][y+1]+pb3D[x+1][y])/3.0;
+        p2avg = (pc3D[x][y]+pc3D[x][y+1]+pc3D[x+1][y])/3.0;
+        webfillflt(xv,yv,zv,3,(int)(p0avg*63)*4096 + (int)(p1avg*63)*64 + (int)(p2avg*63) + 1);
+        
+        xv[0] = (float)x/xl;
+        yv[0] = (float)(y+1)/yl;
+        zv[0] = heights3D[x][y+1]/5.0 + 0.4;
+        
+        xv[1] = (float)(x+1)/xl;
+        yv[1] = (float)(y+1)/yl;
+        zv[1] = heights3D[x+1][y+1]/5.0 + 0.4;
+        
+        xv[2] = (float)(x+1)/xl;
+        yv[2] = (float)y/yl;
+        zv[2] = heights3D[x+1][y]/5.0 + 0.4;
+
+        p0avg = (pa3D[x+1][y+1]+pa3D[x][y+1]+pa3D[x+1][y])/3.0;
+        p1avg = (pb3D[x+1][y+1]+pb3D[x][y+1]+pb3D[x+1][y])/3.0;
+        p2avg = (pc3D[x+1][y+1]+pc3D[x][y+1]+pc3D[x+1][y])/3.0;
+        webfillflt(xv,yv,zv,3,(int)(p0avg*63)*4096 + (int)(p1avg*63)*64 + (int)(p2avg*63) + 1);
+    }
+    webgldisplay(0);
     showDig[0][0]=0;
 }
 
@@ -2536,6 +2653,8 @@ void *runBackProp(void *arg){
         if (z==1) {
             sprintf(buffer,"Assuming NN=1 with Xavier init scaled=%.3f",weightScale);
             webwriteline(buffer);
+            ipSet("net",1);
+            webupdate(ip,rp,sp);
         }
         int len = sprintf(buffer,"Architecture (%d",layerSizes[0]);
         for (i=1;i<10;i++) len += sprintf(buffer+len,"-%d",layerSizes[i]);
@@ -2563,6 +2682,7 @@ void *runBackProp(void *arg){
     // ALLOCATE MEMORY FOR ENTORPY AND ACCURACY HISTORY
     if (ents!=NULL){
         free(ents); free(ents2); free(accs); free(accs2);
+        ents = NULL;
     }
     ents = (float*)malloc( (int)(x/y+1) * sizeof(float) );
     ents2 = (float*)malloc( (int)(x/y+1) * sizeof(float) );
@@ -2637,10 +2757,17 @@ void *runBackProp(void *arg){
             time(&start);
             if (z==1) webwriteline(buffer);
             else printf("%s\n",buffer);
-            if (z==1 && isDigits(inited)!=1) displayClassify(0);
+            if (z==1 && isDigits(inited)!=1) {
+                if (use3D==1) displayClassify3D();
+                else displayClassify(0);
+            }
             if (z==1 && showEnt==1) displayEntropy(ents,entSize,ents2,y);
             if (z==1 && showAcc==1) displayAccuracy(accs,accSize,accs2,y);
             if (z==1 && isDigits(inited)==1 && showCon==1)  displayConfusion(confusion);
+        }
+        if (requestInit==1){
+            initNet(ipGet("net"));
+            requestInit = 0;
         }
         if (working==0){
             webwriteline("learning stopped early");
@@ -2663,7 +2790,7 @@ int backProp(int x, float *ent, int ep){
     int dc, a, a2, i2, j2, i3, j3, pmax, imax, jmax;
     int temp, temp2;
     // DATA AUGMENTATION
-    if (augmentRatio>0.0)
+    if (augmentRatio>0.0 && isDigits(inited)==1)
     if ( (float)rand()/(float)RAND_MAX <= augmentRatio ){
         if (augmentAngle>0.0)
             rot = (int)(2.0 * augmentAngle * (float)rand()/(float)RAND_MAX - augmentAngle);
@@ -2918,6 +3045,9 @@ int forwardProp(int x, int dp, int train, int lay){
         layers[9][i] = layers[9][i] / esum;
     }
     prob = layers[9][imax]; // ugly use of global variable :-(
+    prob0 = layers[9][0];
+    prob1 = layers[9][2];
+    prob2 = layers[9][4];
     return imax;
 }
 
