@@ -11,7 +11,7 @@ Upon running the compiled program, your terminal window will say `webgui: Listen
 ![begin](http://playagricola.com/Kaggle/CNNbegin.png)  
   
 # Now be patient :-)
-Let the CNN train. Unfortunately I didn't implement GPU yet, so each epoch takes a slow 3 minutes. Be patient and let it train for 100 epochs and you will see the net achieve 99.5% accuracy! 
+Let the CNN train. Unfortunately I didn't implement GPU or minibatches yet, so each epoch takes a slow 4 minutes. Be patient and let it train for 75 epochs and you will see the net achieve 99.5% accuracy! 
   
 ![progress](http://playagricola.com/Kaggle/CNNprogress.png)  
   
@@ -19,3 +19,5 @@ Let the CNN train. Unfortunately I didn't implement GPU yet, so each epoch takes
 To make predictions for Kaggle, click the `+` sign next to the `Load` button and set `trainSet = 0` and select `dataFile = test.csv`. Then click `Load`. Next click `Predict` which writes `Submit.csv` to your hard drive. Upload that file to Kaggle and celebrate!  
   
 ![results](http://playagricola.com/Kaggle/MNIST-result-DA4a.png)
+  
+To obtain 99.75%, you must train 15 CNNs using architecture 784-C3:32-C3:32-P2-C3:64-C3:64-P2-128-10 with data augmentation 0.1 for 30 epochs and ensemble them. (Each CNN achieves 99.65% by itself.) This takes a long time without GPUs, therefore it is preferable to execute the TensorFlow code posted [here](https://github.com/cdeotte/MNIST-CNN-99.75) or [here](https://www.kaggle.com/cdeotte/25-million-images-0-99757-mnist).
